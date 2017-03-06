@@ -134,9 +134,9 @@ def dark_combine(master_frames, dark_list, database, temp_path=None):
     return master_dark
 
 
-def run(origin, suffix, temp_path):
+def process(origin, suffix, temp_path):
     """
-    Pipeline execution function
+    Image processing pipeline
     """
 
     logger.debug("Creating database with all the images")
@@ -159,6 +159,26 @@ def run(origin, suffix, temp_path):
             master_dark = dark_combine(master_frames, dark_list, database,
                                        temp_path)
 
+
+def run(origin, suffix, verbose=None):
+    """
+    Pipeline execution function
+    """
+
+    try:
+        temp_path = mkdtemp(prefix=icat.__basename__+"_")
+        logger.debug("Temporary directory created: {}".format(temp_path))
+
+        process(origin, suffix, temp_path=temp_path)
+
+    except Exception as err:
+        logger.exception(err)
+        raise
+    finally:
+        if verbose <= 1:
+            rmtree(temp_path)
+
+
 def main():
     """
     Entry point
@@ -174,18 +194,7 @@ def main():
 
     logger = get_logger(__name__, verbose=args.verbose)
 
-    try:
-        temp_path = mkdtemp(prefix=icat.__basename__+"_")
-        logger.debug("Temporary directory created: {}".format(temp_path))
-
-        run(args.path, args.suffix, temp_path=temp_path)
-
-    except Exception as err:
-        logger.exception(err)
-        raise
-    finally:
-        if args.verbose <= 1:
-            rmtree(temp_path)
+    run(args.path, args.suffix, args.verbose)
 
 
 if __name__ == "__main__":
