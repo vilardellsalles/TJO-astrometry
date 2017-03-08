@@ -9,6 +9,7 @@ import argparse
 from shutil import rmtree
 from tempfile import mkdtemp, NamedTemporaryFile
 
+import numpy as np
 from astropy import log as astrolog
 import ccdproc
 
@@ -19,6 +20,27 @@ from icat.tools.ccdproc_database import create_database
 
 astrolog.setLevel("ERROR")
 logger = get_logger(__name__)
+
+
+def valid_values(image_list, median_range, std_max):
+    """
+    Ensure that images have values within a certain range
+    """
+
+    valid_images = []
+    for name in image_list:
+        image = ccdproc.CCDData.read(name, unit="adu")
+
+        std = np.std(image.data)
+        median = np.median(image.data)
+
+        if median_range[0] < median < median_range[1] and std < std_max:
+            valid_images += [name]
+
+    if image_list and not valid_images:
+        raise ValueError("No images left after checking for image values")
+
+    return valid_images
 
 
 def filter_bias(database, image):
@@ -57,6 +79,9 @@ def bias_combine(master_frames, bias_list, temp_path=None):
         with NamedTemporaryFile(suffix="_bias.fits", dir=temp_path,
                                 delete=False) as biasfile:
             master_bias = biasfile.name
+
+        bias_list = valid_values(bias_list, median_range=(1700, 2200),
+                                 std_max=150)
 
         debug_string = "Using {} images to create master bias '{}'"
         logger.debug(debug_string.format(len(bias_list), master_bias))
@@ -105,6 +130,9 @@ def dark_combine(master_frames, dark_list, database, temp_path=None):
         with NamedTemporaryFile(suffix="_dark.fits", dir=temp_path,
                                 delete=False) as darkfile:
             master_dark = darkfile.name
+
+        dark_list = valid_values(dark_list, median_range=(1700, 2200),
+                                 std_max=150)
 
         debug_string = "Cleaning {} images before creating master dark '{}'"
         logger.debug(debug_string.format(len(dark_list), master_dark))
