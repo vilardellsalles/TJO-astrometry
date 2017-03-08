@@ -9,6 +9,7 @@ import argparse
 from shutil import rmtree
 from tempfile import mkdtemp, NamedTemporaryFile
 
+from astropy import log as astrolog
 import ccdproc
 
 import icat
@@ -16,6 +17,7 @@ from icat.tools.logs import get_logger
 from icat.tools.ccdproc_database import create_database
 
 
+astrolog.setLevel("ERROR")
 logger = get_logger(__name__)
 
 
@@ -80,6 +82,7 @@ def filter_darks(database, image):
     mask &= database["jd"].astype(int) == int(ref_image["jd"])
     mask &= database["naxis1"].astype(int) == int(ref_image["naxis1"])
     mask &= database["naxis2"].astype(int) == int(ref_image["naxis2"])
+    mask &= database["exptime"].astype(int) >= int(ref_image["exptime"])
     mask &= abs(database["camtemp"] - ref_image["camtemp"]) < 3
 
     return database["file"][mask].tolist()
@@ -134,6 +137,24 @@ def dark_combine(master_frames, dark_list, database, temp_path=None):
     return master_dark
 
 
+def filter_flats(database, image):
+    """
+    Select flat images suitable to be used in a given image
+    """
+
+    ref_image = database[database["file"] == image]
+
+    mask = database["obstype"] == "Flat"
+    mask &= database["instrume"] == ref_image["instrume"]
+    mask &= database["filter"] == ref_image["filter"]
+    mask &= database["jd"].astype(int) == int(ref_image["jd"])
+    mask &= database["naxis1"].astype(int) == int(ref_image["naxis1"])
+    mask &= database["naxis2"].astype(int) == int(ref_image["naxis2"])
+    mask &= abs(database["camtemp"] - ref_image["camtemp"]) < 3
+
+    return database["file"][mask].tolist()
+
+
 def process(origin, suffix, temp_path):
     """
     Image processing pipeline
@@ -156,8 +177,10 @@ def process(origin, suffix, temp_path):
 
             dark_list = filter_darks(database, image)
 
-            master_dark = dark_combine(master_frames, dark_list, database,
-                                       temp_path)
+            master_dark = dark_combine(master_frames, dark_list,
+                                       database, temp_path)
+
+            flat_list = filter_flats(database, image)
 
 
 def run(origin, suffix, verbose=None):
