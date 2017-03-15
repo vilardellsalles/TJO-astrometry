@@ -11,6 +11,7 @@ from tempfile import mkdtemp, NamedTemporaryFile
 
 import numpy as np
 from astropy import log as astrolog
+from astropy.units import second
 import ccdproc
 
 import icat
@@ -67,6 +68,8 @@ def bias_combine(master_frames, bias_list, temp_path=None):
     Create the master bias, if required
     """
 
+    bias_list = valid_values(bias_list, median_range=(1700, 2200), std_max=150)
+
     biasname = [name for name, combolist in master_frames.iteritems()
                 if bias_list == combolist]
 
@@ -80,11 +83,8 @@ def bias_combine(master_frames, bias_list, temp_path=None):
                                 delete=False) as biasfile:
             master_bias = biasfile.name
 
-        bias_list = valid_values(bias_list, median_range=(1700, 2200),
-                                 std_max=150)
-
-        debug_string = "Using {} images to create master bias '{}'"
-        logger.debug(debug_string.format(len(bias_list), master_bias))
+        log_msg = "Using {} bias to create master bias '{}'"
+        logger.debug(log_msg.format(len(bias_list), master_bias))
 
         ccdproc.combine(bias_list, output_file=master_bias, mem_limit=1e9,
                         method="median", unit="adu")
@@ -118,6 +118,8 @@ def dark_combine(master_frames, dark_list, database, temp_path=None):
     Create the master dark, if required
     """
 
+    dark_list = valid_values(dark_list, median_range=(1700, 2200), std_max=150)
+
     darkname = [name for name, combolist in master_frames.iteritems()
                 if dark_list == combolist]
 
@@ -131,11 +133,8 @@ def dark_combine(master_frames, dark_list, database, temp_path=None):
                                 delete=False) as darkfile:
             master_dark = darkfile.name
 
-        dark_list = valid_values(dark_list, median_range=(1700, 2200),
-                                 std_max=150)
-
-        debug_string = "Cleaning {} images before creating master dark '{}'"
-        logger.debug(debug_string.format(len(dark_list), master_dark))
+        log_msg = "Cleaning {} darks to create master dark '{}'"
+        logger.debug(log_msg.format(len(dark_list), master_dark))
 
         scaling = []
         clean_images = []
@@ -183,6 +182,65 @@ def filter_flats(database, image):
     return database["file"][mask].tolist()
 
 
+def flat_combine(master_frames, flat_list, database, temp_path=None):
+    """
+    Create the master flat, if required
+    """
+
+    flat_list = valid_values(flat_list, median_range=(20000, 40000),
+                             std_max=1500)
+
+    flatname = [name for name, combolist in master_frames.iteritems()
+                if flat_list == combolist]
+
+    if flatname:
+        master_flat = flatname[0]
+        debug_string = "Using flat '{}'"
+        logger.debug(debug_string.format(master_flat))
+
+    else:
+        with NamedTemporaryFile(suffix="_flat.fits", dir=temp_path,
+                                delete=False) as flatfile:
+            master_flat = flatfile.name
+
+        log_msg = "Cleaning {} flats to create master flat '{}'"
+        logger.debug(log_msg.format(len(flat_list), master_flat))
+
+        scaling = []
+        clean_images = []
+        for image in flat_list:
+            bias_list = filter_bias(database, image)
+
+            master_bias = bias_combine(master_frames, bias_list, temp_path)
+
+            dark_list = filter_darks(database, image)
+
+            master_dark = dark_combine(master_frames, dark_list,
+                                       database, temp_path)
+
+            raw_data = ccdproc.CCDData.read(image, unit="adu")
+            bias_data = ccdproc.CCDData.read(master_bias, unit="adu")
+            dark_data = ccdproc.CCDData.read(master_dark, unit="adu")
+
+            sub_data = ccdproc.ccd_process(raw_data, master_bias=bias_data,
+                                           dark_frame=dark_data,
+                                           exposure_key="EXPTIME",
+                                           exposure_unit=second,
+                                           add_keyword=False)
+
+            clean_images += [sub_data]
+
+            scaling += [1.0 / sub_data.data.mean()]
+
+        flat = ccdproc.combine(clean_images, mem_limit=1e9, scale=scaling,
+                               method="median", unit="adu")
+        flat.write(master_flat)
+
+        master_frames[master_flat] = flat_list
+
+    return master_flat
+
+
 def process(origin, suffix, temp_path):
     """
     Image processing pipeline
@@ -210,6 +268,9 @@ def process(origin, suffix, temp_path):
 
             flat_list = filter_flats(database, image)
 
+            master_flat = flat_combine(master_frames, flat_list,
+                                       database, temp_path)
+
 
 def run(origin, suffix, verbose=None):
     """
@@ -222,8 +283,8 @@ def run(origin, suffix, verbose=None):
 
         process(origin, suffix, temp_path=temp_path)
 
-    except Exception as err:
-        logger.exception(err)
+    except Exception:
+        logger.exception("")
         raise
     finally:
         if verbose <= 1:
