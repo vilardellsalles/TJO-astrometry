@@ -5,6 +5,7 @@ Pipeline used to reduce TJO images of the proposal entitled
 
 from __future__ import (unicode_literals, absolute_import,
                         division, print_function)
+import os.path
 import argparse
 from shutil import rmtree
 from tempfile import mkdtemp, NamedTemporaryFile
@@ -270,6 +271,28 @@ def process(origin, suffix, temp_path):
 
             master_flat = flat_combine(master_frames, flat_list,
                                        database, temp_path)
+
+            raw_data = ccdproc.CCDData.read(image, unit="adu")
+            bias_data = ccdproc.CCDData.read(master_bias, unit="adu")
+            dark_data = ccdproc.CCDData.read(master_dark, unit="adu")
+            flat_data = ccdproc.CCDData.read(master_flat, unit="adu")
+
+            sub_data = ccdproc.ccd_process(raw_data, master_bias=bias_data,
+                                           dark_frame=dark_data,
+                                           master_flat=flat_data,
+                                           exposure_key="EXPTIME",
+                                           exposure_unit=second,
+                                           add_keyword=False)
+
+            tmp_image = os.path.join(temp_path, os.path.basename(image))
+            if suffix != "imc.fits":
+                red_image = tmp_image.replace(suffix, "imc.fits")
+            else:
+                red_image = tmp_image.replace(suffix, "imr.fits")
+
+            sub_data.write(red_image)
+
+            logger.debug("Image '{}' created".format(red_image))
 
 
 def run(origin, suffix, verbose=None):
