@@ -88,7 +88,7 @@ def bias_combine(master_frames, bias_list, temp_path=None):
         logger.debug(log_msg.format(len(bias_list), master_bias))
 
         ccdproc.combine(bias_list, output_file=master_bias, mem_limit=1e9,
-                        method="median", unit="adu")
+                        method="median", unit="adu", dtype="float32")
 
         master_frames[master_bias] = bias_list
 
@@ -156,7 +156,7 @@ def dark_combine(master_frames, dark_list, database, temp_path=None):
             scaling += [1.0 / read(image, unit="adu").header["EXPTIME"]]
 
         dark = ccdproc.combine(clean_images, mem_limit=1e9, scale=scaling,
-                               method="median", unit="adu")
+                               method="median", unit="adu", dtype="float32")
         dark.header["EXPTIME"] = 1.0
         dark.write(master_dark)
 
@@ -234,7 +234,7 @@ def flat_combine(master_frames, flat_list, database, temp_path=None):
             scaling += [1.0 / sub_data.data.mean()]
 
         flat = ccdproc.combine(clean_images, mem_limit=1e9, scale=scaling,
-                               method="median", unit="adu")
+                               method="median", unit="adu", dtype="float32")
         flat.write(master_flat)
 
         master_frames[master_flat] = flat_list
@@ -290,6 +290,8 @@ def process(origin, suffix, temp_path):
             else:
                 red_image = tmp_image.replace(suffix, "imr.fits")
 
+            sub_data.data = sub_data.data.astype("float32")
+            sub_data.header.pop("BZERO")
             sub_data.write(red_image)
 
             logger.debug("Image '{}' created".format(red_image))
