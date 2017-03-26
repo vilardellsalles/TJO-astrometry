@@ -17,7 +17,9 @@ import ccdproc
 
 import icat
 from icat.tools.logs import get_logger
+from icat.tools.photometry import sextractor
 from icat.tools.ccdproc_database import create_database
+from icat.tools.astrometry import solve, AstrometryError, AstrometryWarning
 
 
 astrolog.setLevel("ERROR")
@@ -285,16 +287,23 @@ def process(origin, suffix, temp_path):
                                            add_keyword=False)
 
             tmp_image = os.path.join(temp_path, os.path.basename(image))
-            if suffix != "imc.fits":
-                red_image = tmp_image.replace(suffix, "imc.fits")
-            else:
-                red_image = tmp_image.replace(suffix, "imr.fits")
+            clean_image = tmp_image.replace(suffix, "imc.fits")
 
             sub_data.data = sub_data.data.astype("float32")
             sub_data.header.pop("BZERO")
-            sub_data.write(red_image)
+            sub_data.write(clean_image)
 
-            logger.debug("Image '{}' created".format(red_image))
+            logger.debug("Doing astrometry and photometry")
+
+            astro_image = clean_image.replace('imc.fits', 'ima.fits')
+            phot_cat = clean_image.replace('imc.fits', 'ima.cat')
+            try:
+                solve(clean_image, new_fits=astro_image, use_sextractor=True,
+                      ra=sub_data.header["RA"], dec=sub_data.header["DEC"])
+                sextractor(astro_image, catalog_name=phot_cat)
+            except (AstrometryError, AstrometryWarning):
+                logger.exception("Astrometry failed, doing photometry only")
+                sextractor(astro_image, catalog_name=phot_cat)
 
 
 def run(origin, suffix, verbose=None):
