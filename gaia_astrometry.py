@@ -11,19 +11,26 @@ from shutil import rmtree
 from tempfile import mkdtemp, NamedTemporaryFile
 
 import numpy as np
+import astropy.coordinates as coord
+from astropy import table
 from astropy import log as astrolog
-from astropy.units import second
+from astropy.units import second, arcmin
 import ccdproc
+from astroquery.vizier import Vizier
 
 import icat
 from icat.tools.logs import get_logger
 from icat.tools.photometry import sextractor
 from icat.tools.ccdproc_database import create_database
-from icat.tools.astrometry import solve, AstrometryError, AstrometryWarning
+from icat.tools import astrometry as astro
 
+import bokeh.plotting as plt
+from bokeh.palettes import Category20b as col
+plot = plt.figure()
 
 astrolog.setLevel("ERROR")
 logger = get_logger(__name__)
+Vizier.ROW_LIMIT = 100000
 
 
 def valid_values(image_list, median_range, std_max):
@@ -244,6 +251,42 @@ def flat_combine(master_frames, flat_list, database, temp_path=None):
     return master_flat
 
 
+def get_zeropoint(catalog, imcenter, imfilter):
+    """
+    Return the zero point to transform intrumental photometry to
+    standard photometry
+    """
+
+    obs_catalog = table.Table.read(catalog, format="ascii.sextractor")
+
+    nomad = "I/297"
+    apass = "II/336/apass9"
+    ref_catalog = Vizier.query_region(imcenter, 10*arcmin, catalog=apass)[0]
+    ref_catalog.rename_column("{}mag".format(imfilter), "MAG")
+    ref_catalog = ref_catalog[~ref_catalog["MAG"].mask]
+
+    ref = coord.SkyCoord(ref_catalog["RAJ2000"], ref_catalog["DEJ2000"])
+    obs = coord.SkyCoord(obs_catalog["ALPHA_J2000"],
+                         obs_catalog["DELTA_J2000"])
+
+    matched = table.Table(obs.match_to_catalog_sky(ref), masked=True)
+    matched["col0"].name = "index"
+    matched["col1"].name = "distance"
+    del matched["col2"]
+
+    ins_mag = table.Table([obs_catalog["MAG_AUTO"]])
+    ref_mag = table.Table([ref_catalog[matched["index"]]["MAG"]])
+
+    magnitudes = table.hstack([matched, ins_mag, ref_mag])
+    magnitudes.sort(["index", "distance"])
+
+    index = magnitudes["index"]
+    good_match = [True]
+    good_match += [star != oldstar for star, oldstar in zip(index, index[1:])]
+
+    return magnitudes[good_match]
+
+
 def process(origin, suffix, temp_path):
     """
     Image processing pipeline
@@ -255,6 +298,7 @@ def process(origin, suffix, temp_path):
 
     logger.info("Iterating over all the science images")
 
+    plot_color = 0
     master_frames = {}
     for image in database["file"]:
         if image.endswith(suffix):
@@ -298,10 +342,24 @@ def process(origin, suffix, temp_path):
             astro_image = clean_image.replace('imc.fits', 'ima.fits')
             phot_cat = clean_image.replace('imc.fits', 'ima.cat')
             try:
-                solve(clean_image, new_fits=astro_image, use_sextractor=True,
-                      ra=sub_data.header["RA"], dec=sub_data.header["DEC"])
+                astro.solve(clean_image,
+                            new_fits=astro_image,
+                            use_sextractor=True,
+                            ra=sub_data.header["RA"],
+                            dec=sub_data.header["DEC"])
+
                 sextractor(astro_image, catalog_name=phot_cat)
-            except (AstrometryError, AstrometryWarning):
+
+                magnitudes = get_zeropoint(phot_cat, astro.center(astro_image),
+                                   sub_data.header["FILTER"])
+
+                plot.circle(magnitudes["MAG_AUTO"],
+                            magnitudes["MAG"]-magnitudes["MAG_AUTO"], 
+                            color=col[20][plot_color],
+                            size=magnitudes["distance"].to("arcsec"))
+                plot_color += 1
+
+            except (astro.AstrometryError, astro.AstrometryWarning):
                 logger.exception("Astrometry failed, doing photometry only")
                 sextractor(astro_image, catalog_name=phot_cat)
 
@@ -316,6 +374,7 @@ def run(origin, suffix, verbose=None):
         logger.debug("Temporary directory created: {}".format(temp_path))
 
         process(origin, suffix, temp_path=temp_path)
+        plt.show(plot)
 
     except Exception:
         logger.exception("")
