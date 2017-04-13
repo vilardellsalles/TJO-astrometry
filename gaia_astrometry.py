@@ -13,6 +13,7 @@ from tempfile import mkdtemp, NamedTemporaryFile
 import numpy as np
 import astropy.coordinates as coord
 from astropy import table
+from astropy.io import fits
 from astropy import log as astrolog
 from astropy.units import second, arcmin
 import ccdproc
@@ -26,7 +27,7 @@ from icat.tools import astrometry as astro
 
 import bokeh.plotting as plt
 from bokeh.palettes import Category20b as col
-plot = plt.figure()
+
 
 astrolog.setLevel("ERROR")
 logger = get_logger(__name__)
@@ -287,81 +288,93 @@ def get_zeropoint(catalog, imcenter, imfilter):
     return magnitudes[good_match]
 
 
-def process(origin, suffix, temp_path):
+def ccdred(database, suffix, temp_path):
     """
-    Image processing pipeline
+    Clean raw FITS files
     """
 
-    logger.debug("Creating database with all the images")
+    logger.info("Creating master frames and cleaning science images...")
 
-    database = create_database(origin, recursive=True)
+    clean_images = []
+    master_frames = {}
+    for image in filter(lambda i: i.endswith(suffix), database["file"]):
+        logger.debug("Reducing image: {}".format(image))
 
-    logger.info("Iterating over all the science images")
+        bias_list = filter_bias(database, image)
+
+        master_bias = bias_combine(master_frames, bias_list, temp_path)
+
+        dark_list = filter_darks(database, image)
+
+        master_dark = dark_combine(master_frames, dark_list,
+                                   database, temp_path)
+
+        flat_list = filter_flats(database, image)
+
+        master_flat = flat_combine(master_frames, flat_list,
+                                   database, temp_path)
+
+        raw_data = ccdproc.CCDData.read(image, unit="adu")
+        bias_data = ccdproc.CCDData.read(master_bias, unit="adu")
+        dark_data = ccdproc.CCDData.read(master_dark, unit="adu")
+        flat_data = ccdproc.CCDData.read(master_flat, unit="adu")
+
+        sub_data = ccdproc.ccd_process(raw_data, master_bias=bias_data,
+                                       dark_frame=dark_data,
+                                       master_flat=flat_data,
+                                       exposure_key="EXPTIME",
+                                       exposure_unit=second,
+                                       add_keyword=False)
+
+        tmp_image = os.path.join(temp_path, os.path.basename(image))
+        clean = tmp_image.replace(suffix, "imc.fits")
+
+        sub_data.data = sub_data.data.astype("float32")
+        sub_data.header.pop("BZERO")
+        sub_data.write(clean)
+
+        clean_images += [clean]
+
+    return clean_images
+
+
+def astrophot(database):
+    """
+    Compute astrometry and photometry for a list of images
+    """
+
+    logger.info("Computing astrometry and photometry for science images...")
 
     plot_color = 0
-    master_frames = {}
-    for image in database["file"]:
-        if image.endswith(suffix):
-            logger.debug("Reducing image: {}".format(image))
+    plot = plt.figure()
+    for image in filter(lambda i: i.endswith("imc.fits"), database["file"]):
+        log_msg = "Computing astrometry and photometry on image '{}'"
+        logger.debug(log_msg.format(image))
 
-            bias_list = filter_bias(database, image)
+        header = database[database["file"] == image][0]
 
-            master_bias = bias_combine(master_frames, bias_list, temp_path)
+        astro_image = image.replace('imc.fits', 'ima.fits')
+        phot_cat = image.replace('imc.fits', 'ima.cat')
+        try:
+            astro.solve(image, new_fits=astro_image, use_sextractor=True,
+                        ra=header["ra"], dec=header["dec"])
 
-            dark_list = filter_darks(database, image)
+            sextractor(astro_image, catalog_name=phot_cat)
 
-            master_dark = dark_combine(master_frames, dark_list,
-                                       database, temp_path)
+            magnitudes = get_zeropoint(phot_cat, astro.center(astro_image),
+                                       header["filter"])
 
-            flat_list = filter_flats(database, image)
+            plot.circle(magnitudes["MAG"],
+                        magnitudes["MAG"]-magnitudes["MAG_AUTO"],
+                        color=col[20][plot_color],
+                        size=magnitudes["distance"].to("arcsec"))
+            plot_color += 1
 
-            master_flat = flat_combine(master_frames, flat_list,
-                                       database, temp_path)
+        except (astro.AstrometryError, astro.AstrometryWarning):
+            logger.exception("Astrometry failed, doing photometry only")
+            sextractor(astro_image, catalog_name=phot_cat)
 
-            raw_data = ccdproc.CCDData.read(image, unit="adu")
-            bias_data = ccdproc.CCDData.read(master_bias, unit="adu")
-            dark_data = ccdproc.CCDData.read(master_dark, unit="adu")
-            flat_data = ccdproc.CCDData.read(master_flat, unit="adu")
-
-            sub_data = ccdproc.ccd_process(raw_data, master_bias=bias_data,
-                                           dark_frame=dark_data,
-                                           master_flat=flat_data,
-                                           exposure_key="EXPTIME",
-                                           exposure_unit=second,
-                                           add_keyword=False)
-
-            tmp_image = os.path.join(temp_path, os.path.basename(image))
-            clean_image = tmp_image.replace(suffix, "imc.fits")
-
-            sub_data.data = sub_data.data.astype("float32")
-            sub_data.header.pop("BZERO")
-            sub_data.write(clean_image)
-
-            logger.debug("Doing astrometry and photometry")
-
-            astro_image = clean_image.replace('imc.fits', 'ima.fits')
-            phot_cat = clean_image.replace('imc.fits', 'ima.cat')
-            try:
-                astro.solve(clean_image,
-                            new_fits=astro_image,
-                            use_sextractor=True,
-                            ra=sub_data.header["RA"],
-                            dec=sub_data.header["DEC"])
-
-                sextractor(astro_image, catalog_name=phot_cat)
-
-                magnitudes = get_zeropoint(phot_cat, astro.center(astro_image),
-                                   sub_data.header["FILTER"])
-
-                plot.circle(magnitudes["MAG_AUTO"],
-                            magnitudes["MAG"]-magnitudes["MAG_AUTO"], 
-                            color=col[20][plot_color],
-                            size=magnitudes["distance"].to("arcsec"))
-                plot_color += 1
-
-            except (astro.AstrometryError, astro.AstrometryWarning):
-                logger.exception("Astrometry failed, doing photometry only")
-                sextractor(astro_image, catalog_name=phot_cat)
+    plt.show(plot)
 
 
 def run(origin, suffix, verbose=None):
@@ -373,8 +386,18 @@ def run(origin, suffix, verbose=None):
         temp_path = mkdtemp(prefix=icat.__basename__+"_")
         logger.debug("Temporary directory created: {}".format(temp_path))
 
-        process(origin, suffix, temp_path=temp_path)
-        plt.show(plot)
+        logger.debug("Creating database with all the images")
+
+        database = create_database(origin, recursive=True)
+
+        clean_images = ccdred(database, suffix, temp_path=temp_path)
+
+        if clean_images:
+            clean_database = create_database(temp_path)
+            database = table.vstack([database, clean_database],
+                                    join_type="outer")
+
+        astrophot(database)
 
     except Exception:
         logger.exception("")
