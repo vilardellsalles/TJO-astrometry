@@ -1,3 +1,2 @@
 * gaia_astrometry: Create noise image for each calibration image
 * gaia_astrometry: Substract master frames to calibration images to validate that they can be combined
-* gaia_astrometry: Change astrometry and sextractor configuration parameters

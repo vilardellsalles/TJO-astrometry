@@ -2,3 +2,4 @@ numpy==1.12.0
 astropy==1.3
 ccdproc>=1.0
 icat==2.2.0
+astroquery==0.3.5

@@ -359,7 +359,12 @@ def astrophot(database):
             astro.solve(image, new_fits=astro_image, use_sextractor=True,
                         ra=header["ra"], dec=header["dec"])
 
-            sextractor(astro_image, catalog_name=phot_cat)
+            root_path = os.path.dirname(os.path.abspath(__file__))
+            config_path = os.path.join(root_path, "config")
+            config_file = os.path.join(config_path, "sextractor.conf")
+            keys_file = os.path.join(config_path, "sextractor.keys")
+            sextractor(astro_image, config=config_file, params=keys_file,
+                       catalog_name=phot_cat)
 
             magnitudes = get_zeropoint(phot_cat, astro.center(astro_image),
                                        header["filter"])
