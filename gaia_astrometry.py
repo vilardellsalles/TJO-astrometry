@@ -20,10 +20,10 @@ import ccdproc
 from astroquery.vizier import Vizier
 
 import icat
-from icat.tools.logs import get_logger
-from icat.tools.photometry import sextractor
-from icat.tools.ccdproc_database import create_database
-from icat.tools import astrometry as astro
+import icat.astrometry as astro
+from icat.logs import get_logger
+from icat.photometry import sextractor
+from icat.ccdproc_database import create_database
 
 import bokeh.plotting as plt
 from bokeh.palettes import Category20b as col
