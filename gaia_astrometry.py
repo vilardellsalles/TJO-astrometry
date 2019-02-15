@@ -263,8 +263,9 @@ def get_zeropoint(catalog, imcenter, imfilter):
     nomad = "I/297"
     apass = "II/336/apass9"
     ref_catalog = Vizier.query_region(imcenter, 10*arcmin, catalog=apass)[0]
-    ref_catalog.rename_column("{}mag".format(imfilter), "MAG")
-    ref_catalog = ref_catalog[~ref_catalog["MAG"].mask]
+    ref_catalog.rename_column("{}mag".format(imfilter), "MAG_STD")
+    ref_catalog.rename_column("e_{}mag".format(imfilter), "MAGERR_STD")
+    ref_catalog = ref_catalog[~ref_catalog["MAG_STD"].mask]
 
     ref = coord.SkyCoord(ref_catalog["RAJ2000"], ref_catalog["DEJ2000"])
     obs = coord.SkyCoord(obs_catalog["ALPHA_J2000"],
@@ -276,16 +277,27 @@ def get_zeropoint(catalog, imcenter, imfilter):
     del matched["col2"]
 
     ins_mag = table.Table([obs_catalog["MAG_AUTO"]])
-    ref_mag = table.Table([ref_catalog[matched["index"]]["MAG"]])
+    ins_err = table.Table([obs_catalog["MAGERR_AUTO"]])
+    ref_mag = table.Table([ref_catalog[matched["index"]]["MAG_STD"]])
+    ref_err = table.Table([ref_catalog[matched["index"]]["MAGERR_STD"]])
 
-    magnitudes = table.hstack([matched, ins_mag, ref_mag])
+    magnitudes = table.hstack([matched, ins_mag, ins_err, ref_mag, ref_err])
     magnitudes.sort(["index", "distance"])
 
     index = magnitudes["index"]
     good_match = [True]
     good_match += [star != oldstar for star, oldstar in zip(index, index[1:])]
 
-    return magnitudes[good_match]
+    common = magnitudes[good_match]
+    common["ZP"] = common["MAG_STD"] - common["MAG_AUTO"]
+    common["ZP_ERR"] = 1.0/np.sqrt(common["MAGERR_STD"]**2+
+                                   common["MAGERR_AUTO"]**2)
+    print(catalog)
+    for star in range(len(common)):
+        print(star+1, np.average(common["ZP"][:star],
+                                 weights=common["ZP_ERR"][:star]))
+
+    return common
 
 
 def ccdred(database, suffix, temp_path):
@@ -369,8 +381,8 @@ def astrophot(database):
             magnitudes = get_zeropoint(phot_cat, astro.center(astro_image),
                                        header["filter"])
 
-            plot.circle(magnitudes["MAG"],
-                        magnitudes["MAG"]-magnitudes["MAG_AUTO"],
+            plot.circle(magnitudes["MAG_STD"],
+                        magnitudes["MAG_STD"]-magnitudes["MAG_AUTO"],
                         color=col[20][plot_color],
                         size=magnitudes["distance"].to("arcsec"))
             plot_color += 1
