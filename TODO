@@ -1,3 +1,0 @@
-* gaia_astrometry: Create noise image for each calibration image
-* gaia_astrometry: Substract master frames to calibration images to validate that they can be combined
-* imgqs: Resolve dependencies to avoid any connection with TJO pipelines
