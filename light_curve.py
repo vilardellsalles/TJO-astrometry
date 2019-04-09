@@ -55,7 +55,7 @@ def run(input_catalogs, recursive=False, files_filter="trl.dat", max_sep=5,
     catalogs = []
     ref_idx = None
     for idx, cat in enumerate(LogOrProgressBar(cat_files)):
-        time = float(findall("\d+\.\d+", cat)[0])
+        time = float(findall(r"\d+\.\d+", cat)[0])
         cat_table = table.Table.read(cat, format="ascii.sextractor")
         cat_table["JD"] = time
         cat_table["Name"] = cat

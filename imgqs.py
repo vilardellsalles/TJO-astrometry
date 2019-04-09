@@ -30,11 +30,9 @@ from icat import photometry
 from icat.logs import get_logger
 from icat.config import config_option
 
-store = ppl.import_pipeline("store")
-delete = ppl.import_pipeline("remove")
-sst = ppl.import_pipeline("reduce-sst")
+store = ppl.import_pipeline("gaia-store")
+delete = ppl.import_pipeline("gaia-remove")
 catstat = ppl.import_pipeline("catstat")
-catstore = ppl.import_pipeline("store-photometry")
 logger = get_logger(__name__)
 hostname = gethostname()
 
@@ -166,7 +164,7 @@ def nameread(string):
     obstype = result["OBSTYPE"]
     options = {"cbs": "Bias", "cth": "Dark",
                "cf": "Sky Flat", "cd": "Dome Flat"}
-    options["imr"] = "SST" if int(result["PROPCODE"]) == 99 else "Science"
+    options["imr"] = "SST" if int(result["PROPCODE"] or 0) == 99 else "Science"
     result["OBSTYPE"] = options.get(obstype, obstype)
 
     header = {name: value for name, value in result.iteritems()
@@ -633,7 +631,7 @@ def plotfits(orig_file, image=None, header=None, title=""):
 
 def copy_png(orig_file):
     """
-    Neither sst.run nor plotfits return anything.
+    plotfits returns nothing.
     Find PNG image resulting from orig_file and copy it to RUBIES
     """
 
@@ -685,7 +683,6 @@ def run(filename, temp_path=None, verbose=0, dry_run=False):
     with fits.open(rawfname, mode="update") as rawim:
         rawim[0].header = header
 
-    catalog = None
     wcsfname = None
     obstype = header.get("OBSTYPE")
     instrument = header.get("INSTRUME")
@@ -714,7 +711,6 @@ def run(filename, temp_path=None, verbose=0, dry_run=False):
             defocus = header.get("DEFOCUS", 0)
             properties = imgqp(wcsfname, temp_path, defocus=defocus)
             imgqs = properties["IMGQS"]
-            catalog = properties["CATALOG"]
         else:
             imgqs = "9"
 
@@ -748,25 +744,14 @@ def run(filename, temp_path=None, verbose=0, dry_run=False):
 
     # Define output file name for images to be saved
 
-    outfraw = None
-    s3t_proposal = header.get("PROPCODE") == 99
-    if s3t_proposal:
-        outfraw = namewrite(header, prefix=config_option(__name__, "sst"))
-    else:
-        outfraw = namewrite(header, prefix=config_option(__name__, "rawdata"))
+    outfraw = namewrite(header, prefix=config_option(__name__, "rawdata"))
 
     if outfraw:
         logger.debug("Output file name for '{}': {}".format(filename, outfraw))
 
     outfwcs = None
     red_prefix = config_option(__name__, "reddata")
-    if wcsheader and s3t_proposal:
-        outfraw = None
-        outfwcs = namewrite(wcsheader, prefix=config_option(__name__, "sst"))
-    elif wcsheader and obstype == "SST":
-        outfraw = None
-        outfwcs = namewrite(wcsheader, prefix=red_prefix)
-    elif wcsheader:
+    if wcsheader:
         outfwcs = namewrite(wcsheader, prefix=red_prefix, sfx="imt")
 
         logger.debug("Output file name for '{}': {}".format(wcsfname, outfwcs))
@@ -785,12 +770,7 @@ def run(filename, temp_path=None, verbose=0, dry_run=False):
             outfraw = save_image(rawfname, outfraw)
             outfwcs = save_image(wcsfname, outfwcs, dependencies=outfraw)
 
-            if outfwcs and catalog:
-                outfcat = outfwcs.replace(".fits.gz", "_trl.dat")
-                system.new_copy(catalog, outfcat, overwrite=True)
-                catstore.run([outfcat])
-
-            elif not outfraw and not outfwcs:
+            if not outfraw and not outfwcs:
                 err_msg = "No files saved for '{}'"
                 raise ppl.PipelineError(err_msg.format(filename))
 
@@ -808,11 +788,6 @@ def run(filename, temp_path=None, verbose=0, dry_run=False):
 
         try:
             png_image = None
-            if outfwcs and obstype == "SST":
-                # For SST images, find traces, too
-                sst.run(outfwcs)
-                png_image = copy_png(outfwcs)
-
             if "MEIA" in instrument and png_image is None:
                 valid_header = wcsheader or header
                 plotfits(rawfname, image, header=valid_header,

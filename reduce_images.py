@@ -32,7 +32,8 @@ from icat.notifications import send_mail
 from icat.mysql_database import ImagesDB
 
 
-imgqs_ppl = ppl.import_pipeline("imgqs")
+imgqs_ppl = ppl.import_pipeline("gaia-imgqs")
+catstore = ppl.import_pipeline("gaia-catstore")
 astrolog.setLevel("ERROR")
 logger = get_logger(__name__)
 
@@ -185,7 +186,7 @@ class TJODB(ImagesDB):
         jd_max = int(max(images["jd"][~images["jd"].mask]+30))
         naxis1 = images["naxis1"][~images["naxis1"].mask]
         naxis2 = images["naxis2"][~images["naxis2"].mask]
-        instrume = images["instrume"][~images["instrume"].mask]
+        instrume = images["instrume"][~images["instrume"].mask].astype(str)
 
         criteria = ["`original_ids` IS NULL"]
         criteria += ["`obstype` IN {}".format(obstype)]
@@ -1749,7 +1750,7 @@ def copy_red_images(images, verbose=False):
                 system.new_copy(original, destination, makedirs=True)
 
             if imtype == "catalog":
-                imgqs_ppl.catstore.run(destination)
+                catstore.run(destination)
             else:
                 imgqs_ppl.store.run(destination, dependencies=original_ids)
 
