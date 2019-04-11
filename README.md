@@ -23,22 +23,21 @@ The following commands are required to clean and reduce the images:
 
 ```
 icat gaia-imgqs <images>
-icat gaia-update --imgqs [0099|209] <images with invalid IMQS>
+icat gaia-update --imgqs 0099 <images with invalid IMQS>
 icat gaia-reduce *
 icat light-curve *_catalog/*.dat
 ```
 
 IMGQS is a keyword inserted in the FITS header after ```gaia-imgqs``` that 
-contains several quality indicators. All the images used are valid and, hence, 
-the IMGQS can be updated with either 0099 (science images) or 209 (calibration 
-images).
+contains several quality indicators. All the science images used are valid and, 
+hence, the images with invalid IMGQS can be updated with 0099.
 
-## Reduction details
+## Flats availability
 
-### HD 98712
+I have observed the following issues regarding flats availability:
 
-I have observed that the focus position for this object is not constant and 
-several images where obtained with a different focus:
+* **HD 98712.** The focus position for this object is not constant and several 
+images were obtained with a different focus:
 
 | focus | images   |
 | ----- | -------- |
@@ -49,12 +48,18 @@ several images where obtained with a different focus:
 |  4050 |        2 |
 |  4200 |        2 |
 
-Therefore, some of the images of this target will be rejected.
+* **OT Ser and V2306 Oph.** None of the V band images have flats with the proper 
+focus position. Therefore, flats of two posterior nights 
+(2015-04-05 and 2015-04-07) were downloaded.
 
-### 12 Oph
+Considering the lack of flats with the proper focus, I have finally decided to
+use all the flats available, regardless of the focus position. 
+
+## 12 Oph
 
 This target has no comparison stars in the field of view and therefore, it was 
-supposed to have a reference exposure (12 Oph Ref) for each target exposure.
-However, only reference images were obtained for one of the two nights that
-12 Oph was observed. In addition, only 6 images were obtained on the same night 
-(of the 56 obtained).
+supposed to have a reference exposure (12 Oph Ref) for each target exposure. 
+However, reference images were obtained for only one of the two nights that 
+12 Oph was observed. In addition, the night with both target and reference 
+images only contains 6 images of the target (of the 56 obtained) and 3 refence 
+images.
