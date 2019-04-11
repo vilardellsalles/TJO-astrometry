@@ -20,7 +20,7 @@ from astropy import log as astrolog
 from astropy.time import Time
 from astropy.units import day, second
 import ccdproc
-from numpy import cos, std, floor, ceil, median
+from numpy import cos, floor, ceil
 
 import icat.pipelines as ppl
 from icat import system
@@ -42,6 +42,7 @@ min_ndarks = 5
 min_nflats = 3
 
 base_msg = "Dear TJO operator,\n\n{}\n\nSincerely,\n\nICAT reduction pipeline."
+same_focus = config_option(__name__, "same_focus")
 site = config_section("Location")
 OAdM = coord.EarthLocation(lat=site["latitude"], lon=site["longitude"],
                            height=site["elevation"])
@@ -379,8 +380,8 @@ def select_flats(image, bias, darks, flats):
     mask = flats["obstype"] == "Flat"
     mask *= flats["domestat"] == "Open"
     mask *= flats["filter"] == image["filter"]
-    mask *= abs(flats["defocus"].filled() - defocus) < 150
-    mask *= abs(flats["focuspos"].filled() - focuspos) < 150
+    mask *= abs(flats["defocus"].filled() - defocus) < same_focus
+    mask *= abs(flats["focuspos"].filled() - focuspos) < same_focus
     mask *= flats["instrume"] == image["instrume"]
     mask *= flats["naxis1"] == image["naxis1"]
     mask *= flats["naxis2"] == image["naxis2"]
@@ -694,54 +695,6 @@ def log_sky_brightness(images):
         return "Sky brightness: Bright | Dark"
 
 
-def log_seeing(seeing, night):
-    """
-    Return the night seeing for a given night as text
-    """
-
-    try:
-        night_seeing = seeing[night]
-
-        if night_seeing > 2:
-            return "Seeing: Poor"
-        elif 1 < night_seeing <= 2:
-            return "Seeing: Medium"
-        else:
-            return "Seeing: Good"
-
-    except Exception as err:
-        if seeing:
-            err_msg = "An error occurred when logging night seeing: %s"
-            logger.warning(err_msg, err, exc_info=True)
-        else:
-            logger.warning("Unknown night seeing")
-
-        return "Seeing: Poor | Medium | Good"
-
-
-def log_cloud_cover(coverage, night):
-    """
-    Return the cloud coverage for a given night as text
-    """
-
-    try:
-        night_std = coverage[night]
-
-        if night_std > 1:
-            return "Cloud cover: Spectroscopic"
-        else:
-            return "Cloud cover: Photometric"
-
-    except Exception as err:
-        if coverage:
-            err_msg = "An error occurred when logging cloud coverage: %s"
-            logger.warning(err_msg, err, exc_info=True)
-        else:
-            logger.warning("Unknown cloud coverage")
-
-        return "Cloud cover: Spectroscopic | Photometric"
-
-
 def log_solar_elevation(images):
     """
     Return the solar elevation at the time some images where taken
@@ -793,89 +746,6 @@ def match_or_error(reduction, existing, path):
                                                num_existing, path))
 
     return prop_images
-
-
-def nightly_seeing(reddata):
-    """
-    Return night seeing
-    """
-
-    if "fwhm" not in reddata.colnames:
-        logger.warning("Night seeing could not be determined")
-        return
-
-    mask = reddata["defocus"].filled(0) < 150
-    mask *= ~reddata["jd"].mask & ~reddata["fwhm"].mask
-    clean_data = reddata[mask]
-
-    try:
-        seeing_file = os.path.join(os.path.expanduser("~"), "seeing.txt")
-        file_data = clean_data["filter", "elevatio", "fwhm"]
-        file_data["filename"] = [os.path.basename(_image["filename"])
-                                 for _image in clean_data]
-        warnings.filterwarnings("ignore", category=FutureWarning)
-        file_data.sort(["filter", "elevatio", "fwhm"])
-        if file_data:
-            if os.path.isfile(seeing_file):
-                os.rename(seeing_file, seeing_file.replace(".txt", ".old"))
-            columns = ("filename", "filter", "elevatio", "fwhm")
-            file_data[columns].write(seeing_file, overwrite=True,
-                                     format="ascii.fixed_width_two_line")
-    except Exception as err:
-        err_msg = "An error occurred when writing seeing file: %s"
-        logger.warning(err_msg, err, exc_info=True)
-        return
-
-    try:
-        night_seeing = {}
-        filter_set = ("V", "R", "B", "I", "U", "N")
-
-        clean_data["night"] = clean_data["jd"].filled().astype(int)
-        used_data = clean_data["night", "filter", "fwhm"]
-        seeing = used_data.group_by(["night", "filter"])
-        min_seeing = seeing.groups.aggregate(median)
-
-        for night in set(seeing.groups.keys["night"]):
-            for band in filter_set:
-                mask = min_seeing["filter"] == band
-                mask *= min_seeing["night"] == night
-                band_seeing = min_seeing[mask]
-                if band_seeing:
-                    night_seeing[night] = band_seeing["fwhm"][0]
-                    break
-
-    except Exception as err:
-        err_msg = "An error occurred when computing nightly seeing: %s"
-        logger.warning(err_msg, err, exc_info=True)
-        return
-
-    return night_seeing
-
-
-def nightly_coverage(coverage):
-    """
-    Return the cloud coverage for all nights retrieved from the database
-    """
-
-    try:
-        coverage["night"] = coverage["jd"].astype(int)
-
-        julian_days = Time(coverage["jd"], format="jd")
-        sun = coord.get_sun(julian_days)
-        altaz = sun.transform_to(coord.AltAz(obstime=julian_days,
-                                             location=OAdM))
-
-        coverage["elevation"] = altaz.alt.degree
-
-        mask = (~coverage["jd"].mask) & (coverage["elevation"] < -18)
-        night_coverage = coverage[mask].group_by(["night"])
-        cloudy = night_coverage.groups.aggregate(std)
-
-        return {key: value for key, value in cloudy["night", "temperature"]}
-
-    except Exception as err:
-        err_msg = "An error occurred when computing nightly cloud coverage: %s"
-        logger.warning(err_msg, err, exc_info=True)
 
 
 def create_rawdata_log(rawdata, seeing, cloud_coverage):
@@ -968,16 +838,13 @@ def create_rawdata_log(rawdata, seeing, cloud_coverage):
 
         night_images = prop_images[science_mask]
         all_nights = set(night_images["jd"].filled(0).astype(int))
-        night = max(all_nights)
         if len(all_nights) > 1:
-            night_images = night = None
+            night_images = None
             log_msg = "More than one night found when computing observing "
             log_msg = "conditions for '%s'"
             logger.warning(log_msg, filename)
 
         log_text += [log_sky_brightness(night_images)]
-        log_text += [log_seeing(seeing, night)]
-        log_text += [log_cloud_cover(cloud_coverage, night)]
         log_text += [log_solar_elevation(night_images)]
 
         log_text += ["", "", "Observed images:", ""]
@@ -1628,7 +1495,7 @@ def astrophot(images, verbose=False):
             pass
 
         try:
-            if abs(science["defocus"]) > 150:
+            if abs(science["defocus"]) > same_focus:
                 config_file = config_file.replace("sextractor.conf",
                                                   "sextractor.defocused.conf")
 
@@ -1788,13 +1655,7 @@ def create_user_logs(rawdata, reddata, sky_coverage):
         logger.info("Creating log files...")
 
         seeing = None
-        if reddata:
-            seeing = nightly_seeing(reddata)
-
         coverage = None
-        if sky_coverage:
-            coverage = nightly_coverage(sky_coverage)
-
         create_rawdata_log(rawdata, seeing, coverage)
 
         if reddata:
@@ -1959,6 +1820,7 @@ def run(input_paths, recursive=False, files_filter=None, propcode=None,
 
         selected_images = select_calibration(valid_images, calibration_images)
 
+        # coverage = None
         coverage = db.cloud_coverage(selected_images)
 
         copy_raw_images(selected_images)
