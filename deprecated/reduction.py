@@ -1,1 +1,0 @@
-/Users/francesc/local/sources/Github/AstroLuigi/examples/reduction.py
