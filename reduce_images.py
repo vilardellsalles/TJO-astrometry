@@ -317,7 +317,7 @@ def select_bias(image, calib):
     mask *= calib["original_ids"].mask
     mask *= abs(calib["camtemp"].filled() - camtemp) < 3
     mask *= abs(calib["jd"].filled().astype(int) - jd) < 30
-    mask *= [match("^[02]0[0-9]$", imgqs) is not None
+    mask *= [match("^[02][0-9][0-9]$", imgqs) is not None
              for imgqs in calib["imgqs"].filled()]
 
     selected_bias = limit_nights(calib[mask], jd, min_nbias)
@@ -347,7 +347,7 @@ def select_darks(image, bias, darks):
     mask *= darks["original_ids"].mask
     mask *= abs(darks["camtemp"].filled() - camtemp) < 3
     mask *= abs(darks["jd"].filled().astype(int) - jd) < 30
-    mask *= [match("^[02]0[0-9]$", imgqs) is not None
+    mask *= [match("^[02][0-9][0-9]$", imgqs) is not None
              for imgqs in darks["imgqs"].filled()]
 
     for dark, valid in zip(darks, mask):
@@ -388,7 +388,7 @@ def select_flats(image, bias, darks, flats):
     mask *= flats["original_ids"].mask
     mask *= abs(flats["camtemp"].filled() - camtemp) < 3
     mask *= abs(flats["jd"].filled().astype(int) - jd) < 30
-    mask *= [match("^[02]0[0-9]$", imgqs) is not None
+    mask *= [match("^[02][0-9][0-9]$", imgqs) is not None
              for imgqs in flats["imgqs"].filled()]
 
     for flat, valid in zip(flats, mask):
@@ -1039,7 +1039,7 @@ def find_destination(input_images, proposals):
     for image in LogOrProgressBar(input_images.filled()):
 
         reduced = None if image["original_ids"] else False
-        imgqs = match("[02][04][029][0-9]", image["imgqs"])
+        imgqs = match("[02][0-9][029][0-9]", image["imgqs"])
         propcode = image["propcode"]
         user_dir = proposals.get(propcode)
         try:
@@ -1495,7 +1495,7 @@ def astrophot(images, verbose=False):
             pass
 
         try:
-            if abs(science["defocus"]) > same_focus:
+            if 3600 < science["focuspos"] < 7000:
                 config_file = config_file.replace("sextractor.conf",
                                                   "sextractor.defocused.conf")
 

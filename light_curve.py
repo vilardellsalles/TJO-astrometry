@@ -60,12 +60,17 @@ def run(ref_path=".", max_sep=5, max_chi=9, proposal=None, name=None):
 
     query = "SELECT {}, object, jd, filename FROM ph3_photometry "
     query += "JOIN ph3_images ON ph3_images.id=ph3_photometry.image_id "
+
     if proposal and name:
         query += "WHERE propcode={} AND object='{}'".format(proposal, name)
     elif proposal:
         query += "WHERE propcode={}".format(proposal)
     elif name:
         query += "WHERE object='{}'".format(name)
+
+    object_name = ""
+    if name:
+        object_name = "_" + name.lower().replace(" ", "_")
 
     result = db.execute(query.format(",".join(phot_columns)))
 
@@ -78,7 +83,8 @@ def run(ref_path=".", max_sep=5, max_chi=9, proposal=None, name=None):
     OAdM = coord.EarthLocation(lat=site["latitude"], lon=site["longitude"],
                                height=site["elevation"])
 
-    result_name = os.path.join(ref_path, "curves.html")
+    filename = "curves{}.html".format(object_name)
+    result_name = os.path.join(ref_path, filename)
     logger.info("Light curves saved in '%s'", result_name)
 
     if os.path.isfile(result_name):
