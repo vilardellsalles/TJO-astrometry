@@ -14,8 +14,8 @@ from tempfile import mkdtemp
 from tempfile import NamedTemporaryFile as NTF
 from subprocess import call, CalledProcessError
 
-import matplotlib
 import numpy as np
+import matplotlib.pyplot as plt
 from astropy import wcs
 from astropy.io import fits
 from astropy.time import Time
@@ -28,7 +28,6 @@ from icat import system
 from icat import astrometry
 from icat import photometry
 from icat.logs import get_logger
-from icat.config import config_option
 
 store = ppl.import_pipeline("gaia-store")
 delete = ppl.import_pipeline("gaia-remove")
@@ -36,9 +35,7 @@ catstat = ppl.import_pipeline("catstat")
 logger = get_logger(__name__)
 hostname = gethostname()
 
-if "ager" in hostname or "estall" in hostname:
-    matplotlib.use("Agg")
-import matplotlib.pyplot as plt  # noqa: E402
+CONFIG_PATH = os.path.join(os.path.dirname(__file__), "config")
 
 
 def validate(header, keyword, dtype=None, values=None, min_value=None,
@@ -411,7 +408,7 @@ def imgqa(filename, ra, dec, temp_path, verbose):
     logger.debug("Entering imgqa...")
 
     try:
-        config_file = os.path.join(icat.__basepath__, "astrometry.cfg")
+        config_file = os.path.join(CONFIG_PATH, "astrometry.cfg")
         wcsfile = NTF(dir=temp_path, delete=False)
         wcsfits = wcsfile.name
 
@@ -457,9 +454,8 @@ def imgqp(filename, temp_path, defocus=0):
 
     logger.debug("Entering imgqp...")
 
-    config_path = os.path.dirname(os.path.dirname(__file__))
-    config_file = os.path.join(config_path, "config", "sextractor.conf")
-    config_keys = os.path.join(config_path, "config", "sextractor.keys")
+    config_file = os.path.join(CONFIG_PATH, "sextractor.conf")
+    config_keys = os.path.join(CONFIG_PATH, "sextractor.keys")
 
     try:
         with NTF(suffix=".cat", dir=temp_path, delete=False) as catfile:
@@ -744,13 +740,14 @@ def run(filename, temp_path=None, verbose=0, dry_run=False):
 
     # Define output file name for images to be saved
 
-    outfraw = namewrite(header, prefix=config_option(__name__, "rawdata"))
+    base_path = os.path.dirname(os.path.dirname(__file__))
+    outfraw = namewrite(header, prefix=os.path.join(base_path, "rawdata"))
 
     if outfraw:
         logger.debug("Output file name for '{}': {}".format(filename, outfraw))
 
     outfwcs = None
-    red_prefix = config_option(__name__, "reddata")
+    red_prefix = os.path.join(base_path, "reddata")
     if wcsheader:
         outfwcs = namewrite(wcsheader, prefix=red_prefix, sfx="imt")
 

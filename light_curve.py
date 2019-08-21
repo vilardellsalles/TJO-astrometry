@@ -19,17 +19,17 @@ import os.path
 # from astropy.stats import histogram
 # from astropy.units import arcsec
 # from astropy.time import Time
-import astropy.coordinates as coord
+# import astropy.coordinates as coord
 from astropy import table
 
 from icat.logs import get_logger, LogOrProgressBar
 from icat.mysql_database import MySQLDatabase
-from icat.config import config_section
 # from icat import system
 import icat.pipelines as ppl
 
 
 logger = get_logger(__name__)
+reduce_ppl = ppl.import_pipeline("gaia-reduce")
 
 
 def multiple_observations(tbl, keys):
@@ -78,10 +78,6 @@ def run(ref_path=".", max_sep=5, max_chi=9, proposal=None, name=None):
 
     if not cat_table:
         raise ppl.PipelineError("No photometry found!")
-
-    site = config_section("Location")
-    OAdM = coord.EarthLocation(lat=site["latitude"], lon=site["longitude"],
-                               height=site["elevation"])
 
     filename = "curves{}.html".format(object_name)
     result_name = os.path.join(ref_path, filename)

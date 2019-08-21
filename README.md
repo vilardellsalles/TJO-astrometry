@@ -61,18 +61,13 @@ The following commands are required to clean and reduce the images:
 
 ```
 icat gaia-imgqs <images>
-icat gaia-update --imgqs 0099 <images with invalid IMQS>
 icat gaia-reduce *
 icat light-curve *_catalog/*.dat
 ```
 
-IMGQS is a keyword inserted in the FITS header after ```gaia-imgqs``` that 
-contains several quality indicators. All the science images used are valid and, 
-hence, the images with invalid IMGQS can be updated with 0099.
-
 All the images could be cleaned from bias, darks and flats ([see issues
-regarding flats](#data-issues)). However, no catalog could be
-produced for 4 images:
+regarding flats](#data-issues)). However, no catalog could be produced for 4
+images:
 
 <div align="center">
 

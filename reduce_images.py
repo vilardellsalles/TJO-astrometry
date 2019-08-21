@@ -27,7 +27,7 @@ from icat import system
 from icat import astrometry
 from icat import photometry
 from icat.logs import get_logger, LogOrProgressBar
-from icat.config import config_option, config_section
+from icat.config import config_option
 from icat.notifications import send_mail
 from icat.mysql_database import ImagesDB
 
@@ -40,12 +40,14 @@ logger = get_logger(__name__)
 min_nbias = 5
 min_ndarks = 5
 min_nflats = 3
+same_focus = 1500
+
+CONFIG_PATH = os.path.join(os.path.dirname(__file__), "config")
+ROOT_DEST = os.path.join(os.path.dirname(os.path.dirname(__file__)),
+                         "proposals")
 
 base_msg = "Dear TJO operator,\n\n{}\n\nSincerely,\n\nICAT reduction pipeline."
-same_focus = config_option(__name__, "same_focus")
-site = config_section("Location")
-OAdM = coord.EarthLocation(lat=site["latitude"], lon=site["longitude"],
-                           height=site["elevation"])
+OAdM = coord.EarthLocation(lat="42:03:05", lon="00:43:46", height="1620 meter")
 
 
 class MissingError(ValueError):
@@ -1021,7 +1023,6 @@ def find_destination(input_images, proposals):
         raise MissingError(err_msg)
 
     options = ["reduced", "imgqs", "propcode", "date-obs or time-obs"]
-    root_dest = config_option(__name__, "destination", ignore_missing=False)
 
     num_images = len(input_images)
     plural_images = "" if num_images == 1 else "s"
@@ -1070,7 +1071,7 @@ def find_destination(input_images, proposals):
 
             mask += [True]
             invalid_column += [""]
-            destination_column += [os.path.join(root_dest, prop_dir,
+            destination_column += [os.path.join(ROOT_DEST, prop_dir,
                                                 user_dir, date_dir)]
 
     input_images["invalid"] = invalid_column
@@ -1473,9 +1474,8 @@ def astrophot(images, verbose=False):
             pass
 
     cats = defaultdict(list)
-    config_path = os.path.dirname(os.path.dirname(__file__))
-    default_config = os.path.join(config_path, "config", "sextractor.conf")
-    default_keys = os.path.join(config_path, "config", "sextractor.keys")
+    default_config = os.path.join(CONFIG_PATH, "sextractor.conf")
+    default_keys = os.path.join(CONFIG_PATH, "sextractor.keys")
     stdout = stderr = None if verbose else open(os.devnull, "w")
     for science in LogOrProgressBar(science_images):
         config_file = default_config
@@ -1757,9 +1757,8 @@ def mail_statistics(rejected, published, reduced, istest):
             mail_msg += msg.format(num_invalid, "\n".join(invalid_table), host)
         else:
             path_plural = "" if num_paths[-1] == 1 else "s"
-            root_dest = config_option(__name__, "destination")
             msg = "You can now proceed to review the log file{} in '{}'."
-            mail_msg += msg.format(path_plural, root_dest)
+            mail_msg += msg.format(path_plural, ROOT_DEST)
 
         return base_msg.format(mail_msg)
 
@@ -1904,14 +1903,6 @@ def main():
 
     global logger
 
-    try:
-        origin_path = config_option(__name__, "origin")
-        all_paths = [path for path in os.listdir(origin_path)
-                     if path.isdigit()]
-        default_path = os.path.join(origin_path, sorted(all_paths)[-1])
-    except (TypeError, IndexError):
-        default_path = os.path.expanduser("~")
-
     parser = argparse.ArgumentParser(description=__doc__)
 
     parser.add_argument("-r", "--recursive", action="store_true",
@@ -1933,8 +1924,7 @@ def main():
     parser.add_argument("-f", "--filter", default="imr.fits", help=help_msg)
 
     help_msg = "file/s or directory/ies with FITS image/s "
-    help_msg += "(default: '%(default)s')"
-    parser.add_argument("path", nargs="*", default=default_path, help=help_msg)
+    parser.add_argument("path", nargs="+", help=help_msg)
 
     args = parser.parse_args()
 
