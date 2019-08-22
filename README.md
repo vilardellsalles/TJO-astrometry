@@ -57,68 +57,75 @@ use all the flats available, regardless of the focus position.
 
 ## Reduction
 
-The following commands are required to clean and reduce the images:
+Data is provided in compressed *tar* files. One file is provided for each
+observation night. Compressed files have to be uncompressed to have FITS images with the following command:
 
 ```
-icat gaia-imgqs <images>
-icat gaia-reduce *
-icat light-curve *_catalog/*.dat
+cd obsdata
+for night in `ls *.tar.gz`; do tar xzvf $night; done
+cd ..
 ```
 
-All the images could be cleaned from bias, darks and flats ([see issues
-regarding flats](#data-issues)). However, no catalog could be produced for 4
-images:
+Extracted directories, can then be processed with specific
+[ICAT](https://gitlab.ice.csic.es/rocs/icat) pipelines:
 
-<div align="center">
+```
+for image in `ls obsdata/2015*/*.fits*; do icat gaia-imgqs $image; done
+icat gaia-reduce rawdata/*
+```
 
-| image | object |
-| ----- | ------ |
-| 2457071/TJO2457071.69501_R_iml.fits.gz | 12 Oph |
-| 2457071/TJO2457071.69892_R_iml.fits.gz | 12 Oph |
-| 2457071/TJO2457071.70402_R_iml.fits.gz | 12 Oph |
-| 2457116/TJO2457116.45622_U_iml.fits.gz | OT Ser |
-
-</div>
+With the commands above, images are stored into specific directories and in a
+custom MySQL database. They are also cleaned from bias, darks and flats ([see
+issues regarding flats](#data-issues)). Photometry and astrometry is also
+extracted for all stars and stored in a SExtractor file (one file per reduced
+image) and in the database. Unfortunately, a valid catalog could not be
+produced for 12 of the 12 Oph images. Considering the [lack of reference
+stars](#data-issues), no further attempts were done to reduce these images.
 
 Therefore, the resulting reduction provided:
 
 <div align="center">
 
 | object     | night   | images | stars |
-| ---------- | ------- | ------ | ----- |
-| 12 Oph     | 2457071 |     47 |    64 |
-| 12 Oph     | 2457073 |      6 |    10 |
-| 12 Oph Ref | 2457073 |      3 |    47 |
-| HD 135599  | 2457032 |     14 |   125 |
-| HD 135599  | 2457033 |     14 |   107 |
-| HD 135599  | 2457034 |     14 |   131 |
-| HD 135599  | 2457036 |     14 |   135 |
-| HD 135599  | 2457037 |      4 |    24 |
-| HD 135599  | 2457045 |     12 |    73 |
-| HD 135599  | 2457046 |      6 |    33 |
-| HD 180617  | 2457073 |      4 |   386 |
-| HD 180617  | 2457081 |     15 |  1129 |
-| HD 98712   | 2457061 |     10 |    84 |
-| HD 98712   | 2457062 |      8 |    70 |
-| HD 98712   | 2457063 |     30 |   425 |
-| HD 98712   | 2457064 |     30 |   426 |
-| OT Ser     | 2457109 |     75 |  1416 |
-| OT Ser     | 2457110 |     75 |  1176 |
-| OT Ser     | 2457111 |     75 |   949 |
-| OT Ser     | 2457112 |     75 |  1308 |
-| OT Ser     | 2457113 |     75 |  1483 |
-| OT Ser     | 2457114 |     45 |   680 |
-| OT Ser     | 2457115 |     25 |   364 |
-| OT Ser     | 2457116 |     38 |   142 |
-| OT Ser     | 2457117 |     50 |   541 |
-| V2306 Oph  | 2457109 |     25 |  1101 |
-| V2306 Oph  | 2457110 |     25 |  1228 |
-| V2306 Oph  | 2457111 |     25 |  1036 |
-| V2306 Oph  | 2457112 |     27 |  1760 |
-| V2306 Oph  | 2457113 |     27 |  1399 |
-| V2306 Oph  | 2457114 |      7 |   184 |
-| V2306 Oph  | 2457115 |      7 |   188 |
-| V2306 Oph  | 2457117 |      7 |   146 |
+| ---------- | ------- | -----  | ----- |
+| 12 Oph     | 2457071 |     38 |    38 |
+| 12 Oph     | 2457073 |      6 |     6 |
+| 12 Oph Ref | 2457073 |      3 |    29 |
+| HD 135599  | 2457032 |     14 |    22 |
+| HD 135599  | 2457033 |     14 |    28 |
+| HD 135599  | 2457034 |     14 |    28 |
+| HD 135599  | 2457036 |     14 |    27 |
+| HD 135599  | 2457037 |      4 |     7 |
+| HD 135599  | 2457045 |     12 |    37 |
+| HD 135599  | 2457046 |      6 |    18 |
+| HD 180617  | 2457073 |      4 |   705 |
+| HD 180617  | 2457081 |     15 |  1498 |
+| HD 98712   | 2457061 |     10 |    99 |
+| HD 98712   | 2457062 |      8 |    57 |
+| HD 98712   | 2457063 |     30 |   855 |
+| HD 98712   | 2457064 |     30 |   923 |
+| OT Ser     | 2457109 |     75 |  2080 |
+| OT Ser     | 2457110 |     75 |  1943 |
+| OT Ser     | 2457111 |     75 |  1584 |
+| OT Ser     | 2457112 |     75 |  1754 |
+| OT Ser     | 2457113 |     75 |  1991 |
+| OT Ser     | 2457114 |     45 |  1060 |
+| OT Ser     | 2457115 |     25 |   625 |
+| OT Ser     | 2457116 |     39 |   272 |
+| OT Ser     | 2457117 |     50 |   723 |
+| V2306 Oph  | 2457109 |     25 |  1474 |
+| V2306 Oph  | 2457110 |     25 |  1759 |
+| V2306 Oph  | 2457111 |     25 |  1395 |
+| V2306 Oph  | 2457112 |     27 |  2690 |
+| V2306 Oph  | 2457113 |     27 |  1684 |
+| V2306 Oph  | 2457114 |      7 |   227 |
+| V2306 Oph  | 2457115 |      7 |   249 |
+| V2306 Oph  | 2457117 |      7 |   211 |
 
 </div>
 
+The next step is to produce a light curve from the extracted photometry.
+
+```
+icat light-curve *_catalog/*.dat
+```
