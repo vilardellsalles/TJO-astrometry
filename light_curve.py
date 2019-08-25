@@ -45,11 +45,11 @@ def run(ref_path=".", max_sep=5, max_chi=9, proposal=None, name=None):
     Pipeline execution function
     """
 
-    log_msg = ""
+    log_msg = "Reading photometry"
     log_msg += " for object '{}'".format(name) if name else ""
     log_msg += " from proposal {}".format(proposal) if proposal else ""
 
-    logger.info("Reading photometry%s...", log_msg)
+    logger.info("%s...", log_msg)
 
     db = MySQLDatabase(option_groups=["Database"])
 
@@ -81,10 +81,11 @@ def run(ref_path=".", max_sep=5, max_chi=9, proposal=None, name=None):
 
     filename = "curves{}.html".format(object_name)
     result_name = os.path.join(ref_path, filename)
-    logger.info("Light curves saved in '%s'", result_name)
+    logger.info("Photometry saved in '%s'", result_name)
 
     if os.path.isfile(result_name):
         os.remove(result_name)
+
     cat_table.write(result_name, format="jsviewer", max_lines=-1)
 
 

@@ -1495,7 +1495,10 @@ def astrophot(images, verbose=False):
             pass
 
         try:
-            if 3600 < science["focuspos"] < 7000:
+            if 3600 < science["focuspos"] < 4400:
+                config_file = config_file.replace("sextractor.conf",
+                                                  "sextractor.half_focus.conf")
+            elif 4400 < science["focuspos"] < 7000:
                 config_file = config_file.replace("sextractor.conf",
                                                   "sextractor.defocused.conf")
 
