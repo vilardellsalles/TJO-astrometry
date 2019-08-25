@@ -7,7 +7,7 @@ from __future__ import (absolute_import, division, print_function,
 import argparse
 import os.path
 
-# import numpy as np
+import numpy as np
 
 # from bokeh.palettes import plasma
 # from bokeh.models.annotations import Whisker, Span
@@ -18,8 +18,8 @@ import os.path
 # from astropy.modeling import models, fitting
 # from astropy.stats import histogram
 # from astropy.units import arcsec
-# from astropy.time import Time
-# import astropy.coordinates as coord
+from astropy.time import Time
+import astropy.coordinates as coord
 from astropy import table
 
 from icat.logs import get_logger, LogOrProgressBar
@@ -56,9 +56,9 @@ def run(ref_path=".", max_sep=5, max_chi=9, proposal=None, name=None):
     phot_columns = ["x_image", "y_image", "alpha_j2000", "delta_j2000"]
     phot_columns += ["mag_auto", "magerr_auto", "fwhm_world", "flux_radius"]
     phot_columns += ["ellipticity", "theta_j2000", "theta_world", "flags"]
-    im_columns = ["object", "jd", "filename"]
+    im_columns = ["object", "jd", "filename", "elevation"]
 
-    query = "SELECT {}, object, jd, filename FROM ph3_photometry "
+    query = "SELECT {}, object, jd, filename, elevatio FROM ph3_photometry "
     query += "JOIN ph3_images ON ph3_images.id=ph3_photometry.image_id "
 
     if proposal and name:
@@ -78,6 +78,27 @@ def run(ref_path=".", max_sep=5, max_chi=9, proposal=None, name=None):
 
     if not cat_table:
         raise ppl.PipelineError("No photometry found!")
+
+    # Compute airmass. Stars without astrometry, use header elevation
+
+    elevation = coord.Angle(cat_table["elevation"], unit="degree")
+    cat_table["airmass"] = 1 / np.sin(elevation)
+
+    with_pos = (cat_table["alpha_j2000"] != None)
+    with_pos &= (cat_table["delta_j2000"] != None)
+    if any(with_pos):
+        alpha = cat_table["alpha_j2000"][with_pos]
+        delta = cat_table["delta_j2000"][with_pos]
+        obstime = Time(cat_table["jd"][with_pos], format="jd")
+        site = coord.AltAz(obstime=obstime, location=reduce_ppl.OAdM)
+        cat_pos = coord.SkyCoord(alpha, delta, unit="degree, degree")
+        cat_table["airmass"][with_pos] = cat_pos.transform_to(site).secz
+
+    # Identify same star in all the images
+
+    stars_table = cat_table.group_by("object")
+
+    # Store results
 
     filename = "curves{}.html".format(object_name)
     result_name = os.path.join(ref_path, filename)
