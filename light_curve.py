@@ -32,12 +32,44 @@ logger = get_logger(__name__)
 reduce_ppl = ppl.import_pipeline("gaia-reduce")
 
 
-def multiple_observations(tbl, keys):
+def find_ref_image(field):
     """
-    Return whether light curve has more than one measurement
+    Return the image with the largest number of stars in a photometry table
     """
 
-    return len(tbl) > 1
+    max_len = 0
+    ref_image = None
+    ref_group = None
+    images = field.group_by("filename")
+    for filename, group in zip(images.groups.keys, images.groups):
+        group_len = len(group)
+        if group_len > max_len:
+            ref_image = filename
+            ref_group = group
+            max_len = group_len
+
+    return ref_image, ref_group
+
+
+def match_stars(cat_table):
+    """
+    Return a table with all stars matched
+    """
+
+    cat_table["idx"] = -1
+
+    ref_image = {}
+    images_table = cat_table.group_by("object")
+    for target, field in zip(images_table.groups.keys, images_table.groups):
+        ref_name, ref_image = find_ref_image(field)
+        if ref_image is None:
+            logger.warning("No reference image found for '%s'", target)
+            continue
+
+        log_msg = "Reference image for '%s' is '%s' with %s stars"
+        logger.info(log_msg, target[0], ref_name[0], len(ref_image))
+
+    return cat_table
 
 
 def run(ref_path=".", max_sep=5, max_chi=9, proposal=None, name=None):
@@ -84,8 +116,8 @@ def run(ref_path=".", max_sep=5, max_chi=9, proposal=None, name=None):
     elevation = coord.Angle(cat_table["elevation"], unit="degree")
     cat_table["airmass"] = 1 / np.sin(elevation)
 
-    with_pos = (cat_table["alpha_j2000"] != None)
-    with_pos &= (cat_table["delta_j2000"] != None)
+    with_pos = (cat_table["alpha_j2000"] != [None])
+    with_pos &= (cat_table["delta_j2000"] != [None])
     if any(with_pos):
         alpha = cat_table["alpha_j2000"][with_pos]
         delta = cat_table["delta_j2000"][with_pos]
@@ -96,7 +128,7 @@ def run(ref_path=".", max_sep=5, max_chi=9, proposal=None, name=None):
 
     # Identify same star in all the images
 
-    stars_table = cat_table.group_by("object")
+    stars_table = match_stars(cat_table)
 
     # Store results
 
